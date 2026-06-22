@@ -53,7 +53,7 @@ async def predict_batch_csv(file: UploadFile = File(..., description="You must u
         jobs = df['job_text'].astype(str).tolist()
         cleaned_jobs = [" ".join(job.split()) for job in jobs]
 
-        print(f"🚀 Processing batch of {len(cleaned_jobs)} jobs via API...")
+        print(f" Processing batch of {len(cleaned_jobs)} jobs via API...")
 
         predictions = classifier(cleaned_jobs, batch_size=16)
 
