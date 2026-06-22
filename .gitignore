@@ -3,6 +3,5 @@ __pycache__/
 *.pyc
 .env
 data/final_jobs_cleaned.csv
-data/job_embeddings.npy
 notebooks/Recommendation_System.ipynb
 trained_models/
