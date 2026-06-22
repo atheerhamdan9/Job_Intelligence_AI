@@ -1,6 +1,9 @@
 import streamlit as st
 from pathlib import Path
 import tempfile
+import requests
+import pandas as pd
+import io
 from src.recommendation import (
     clean_resume_text,
     recommend_jobs,
@@ -9,6 +12,41 @@ from src.recommendation import (
     job_embeddings,
     build_cv_embedding
 )
+
+
+API_URL = "http://127.0.0.1:8000"
+
+
+def classify_single_text(job_text):
+    response = requests.post(
+        f"{API_URL}/predict",
+        data={"job_description": job_text}
+    )
+
+    if response.status_code != 200:
+        raise Exception(response.json().get("detail", "Prediction failed"))
+
+    return response.json()
+
+
+def classify_batch_file(uploaded_file):
+    files = {
+        "file": (
+            uploaded_file.name,
+            uploaded_file.getvalue(),
+            "text/csv"
+        )
+    }
+
+    response = requests.post(
+        f"{API_URL}/predict_batch_csv",
+        files=files
+    )
+
+    if response.status_code != 200:
+        raise Exception(response.json().get("detail", "Batch prediction failed"))
+
+    return pd.read_csv(io.BytesIO(response.content))
 
 st.set_page_config(
     page_title="Job Intelligence AI",
@@ -112,7 +150,7 @@ div.stButton > button {
     border: none;
     padding: 12px 28px;
     font-weight: 700;
-    font-size: 16px;
+    font-size: 24px !important;
 }
 
 div.stButton > button:hover {
@@ -149,7 +187,7 @@ with col1:
     with st.container(border=True):
         st.image(str(classification_icon), width=100)
         st.markdown("<h2 style='color:#2563eb;'>Classification</h2>", unsafe_allow_html=True)
-        st.markdown("Upload your resume and let AI classify it into the most suitable career category.")
+        st.markdown("Upload your file and let AI classify it into the most suitable career category.")
 
         if st.button("Get Started", key="classification"):
             st.session_state.service = "classification"
@@ -165,36 +203,79 @@ with col2:
 
 st.write("")
 
+
 # Classification
 if st.session_state.service == "classification":
     st.divider()
-    st.header("Resume Classification")
+    st.header("Job Classification")
 
-    uploaded_file = st.file_uploader(
-        "Upload Resume",
-        type=["pdf"],
-        key="classification_upload"
+    # Single Prediction
+    st.subheader("Single Prediction")
+
+    job_text = st.text_area(
+        "Enter Job Description",
+        height=220,
+        key="single_job_text"
     )
 
-    if uploaded_file:
-        if st.button("Classify Resume"):
-            st.markdown("""
+    if st.button("Single Predict"):
+
+        if job_text.strip():
+
+            result = classify_single_text(job_text)
+
+            st.markdown(f"""
             <div class="result-card">
                 <h3>Classification Result</h3>
                 <div style="text-align:center;">
                     <p style="color:#64748b;font-size:18px;">Predicted Category</p>
-                    <h1 style="color:#2563eb;font-size:42px;">Data Science</h1>
-                    <p style="font-size:18px;">Confidence Score: <b>92%</b></p>
+                    <h1 style="color:#2563eb;font-size:42px;">
+                        {result["predicted_category"]}
+                    </h1>
+                    <p style="font-size:18px;">
+                        Confidence Score: <b>{result["confidence_score"]:.2%}</b>
+                    </p>
                 </div>
             </div>
             """, unsafe_allow_html=True)
 
-            st.progress(0.92)
+            st.progress(result["confidence_score"])
 
-            st.markdown("### Top Skills Identified")
-            skills = ["Python", "Machine Learning", "SQL", "Data Analysis", "Statistics"]
-            skills_html = "".join([f'<span class="skill">{skill}</span>' for skill in skills])
-            st.markdown(skills_html, unsafe_allow_html=True)
+        else:
+            st.warning("Please enter a job description.")
+
+    st.divider()
+
+    # Batch Prediction
+    st.subheader("Batch Prediction")
+
+    uploaded_file = st.file_uploader(
+        "Upload CSV file",
+        type=["csv"],
+        key="classification_upload"
+    )
+
+    if uploaded_file is not None:
+
+        if st.button("Batch Predict"):
+            try:
+                result_df = classify_batch_file(uploaded_file)
+
+                st.success("Batch prediction completed!")
+
+                st.dataframe(result_df.head())
+
+                csv = result_df.to_csv(index=False).encode("utf-8")
+
+                st.download_button(
+                    label="Download Classified CSV",
+                    data=csv,
+                    file_name="classified_jobs.csv",
+                    mime="text/csv"
+                )
+
+            except Exception as e:
+                st.error(f"Error: {e}")
 
 # Recommendation
 if st.session_state.service == "recommendation":
